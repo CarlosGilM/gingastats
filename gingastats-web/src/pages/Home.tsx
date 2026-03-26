@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getPartidas } from '../api/api';
 import type { Partida } from '../types/types';
-import EscudoTime from '../components/EscudoTime';
+import MatchCard from '../components/MatchCard';
 import logoFull from '../assets/logo-full.png';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { fetchPartidas } from '../store/partidas/partidasThunks';
+import { selectPartidasPorData, selectPartidasStatus } from '../store/partidas/selectors';
 
 const injectFonts = () => {
   if (document.getElementById('ginga-fonts')) return;
@@ -60,89 +62,21 @@ function PitchBackground() {
   );
 }
 
-function MatchCard({ partida, index, onClick }: { partida: Partida; index: number; onClick: () => void }) {
-  const hora = new Date(partida.data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
-  return (
-    <button
-      onClick={onClick}
-      className="w-full group relative text-left"
-      style={{ animation: `slideIn 0.4s ease forwards`, animationDelay: `${index * 60}ms`, opacity: 0 }}
-    >
-      <div className="absolute -inset-px rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{ background: 'linear-gradient(135deg, rgba(0,230,118,0.15), transparent 60%)' }} />
-
-      <div className="relative flex items-center gap-3 px-5 py-4 rounded-xl border border-white/8 bg-white/[0.03] group-hover:bg-white/[0.06] group-hover:border-[#00e676]/25 transition-all duration-300">
-
-        {/* hora */}
-        <div className="flex-shrink-0 w-12 text-center">
-          <span style={{ fontFamily: 'DM Mono', fontSize: 15, color: '#00e676', fontWeight: 500 }}>{hora}</span>
-        </div>
-
-        <div className="w-px h-8 bg-white/10 flex-shrink-0" />
-
-        {/* time casa — metade esquerda */}
-        <div className="flex items-center justify-end gap-2 overflow-hidden" style={{ flex: '1 1 0', minWidth: 0 }}>
-          <span style={{
-            fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: 18,
-            letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>
-            {partida.time_casa.nome}
-          </span>
-          <div className="flex-shrink-0">
-            <EscudoTime sofascoreId={partida.time_casa.sofascore_id} nome={partida.time_casa.nome} size={30} />
-          </div>
-        </div>
-
-        {/* VS — centro fixo */}
-        <div className="flex-shrink-0 w-10 text-center">
-          <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 900, fontSize: 13, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.2)' }}>VS</span>
-        </div>
-
-        {/* time fora — metade direita */}
-        <div className="flex items-center gap-2 overflow-hidden" style={{ flex: '1 1 0', minWidth: 0 }}>
-          <div className="flex-shrink-0">
-            <EscudoTime sofascoreId={partida.time_fora.sofascore_id} nome={partida.time_fora.nome} size={30} />
-          </div>
-          <span style={{
-            fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: 18,
-            letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>
-            {partida.time_fora.nome}
-          </span>
-        </div>
-
-        {/* competição + seta */}
-        <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
-          <span style={{ fontFamily: 'DM Mono', fontSize: 12, color: 'rgba(255,255,255,0.25)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {partida.competicao}
-          </span>
-          <span className="text-white/20 group-hover:text-[#00e676] group-hover:translate-x-1 transition-all duration-200 text-sm">→</span>
-        </div>
-      </div>
-    </button>
-  );
-}
-
 export default function Home() {
-  const [partidas, setPartidas] = useState<Partida[]>([]);
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  const porData  = useAppSelector(selectPartidasPorData);
+  const status   = useAppSelector(selectPartidasStatus);
+  const loading  = status === 'loading' || status === 'idle';
 
   useEffect(() => {
     injectFonts();
-    getPartidas()
-      .then(setPartidas)
-      .finally(() => setLoading(false));
-  }, []);
+    if (status === 'idle') dispatch(fetchPartidas());
+  }, [dispatch, status]);
 
-  const porData = partidas.reduce<Record<string, Partida[]>>((acc, p) => {
-    const dia = new Date(p.data).toLocaleDateString('pt-BR', {
-      weekday: 'long', day: '2-digit', month: 'long',
-    }).toUpperCase();
-    acc[dia] = [...(acc[dia] ?? []), p];
-    return acc;
-  }, {});
+  const handleCardClick = useCallback((partida: Partida) => {
+    navigate(`/confronto/${partida.id}`);
+  }, [navigate]);
 
   return (
     <div className="min-h-screen text-white relative" style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '16px' }}>
@@ -179,7 +113,7 @@ export default function Home() {
           {loading ? (
             <div className="space-y-2">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className="h-[60px] rounded-xl animate-pulse"
+                <div key={i} className="h-15 rounded-xl animate-pulse"
                   style={{ background: 'rgba(255,255,255,0.04)', animationDelay: `${i * 80}ms` }} />
               ))}
             </div>
@@ -202,7 +136,7 @@ export default function Home() {
                     </div>
                     <div className="space-y-1.5">
                       {jogos.map((p, i) => (
-                        <MatchCard key={p.id} partida={p} index={cardIndex + i} onClick={() => navigate(`/confronto/${p.id}`)} />
+                        <MatchCard key={p.id} partida={p} index={cardIndex + i} onClick={handleCardClick} />
                       ))}
                     </div>
                   </div>

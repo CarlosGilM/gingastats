@@ -103,8 +103,14 @@ def extrair_stat(stats_json, stat_name):
 
 
 def upsert_time(supabase, nome, sofascore_id):
-    slug = nome.lower().replace(' ', '-').replace('ã', 'a').replace('á',
-                                                                    'a').replace('ê', 'e').replace('ú', 'u').replace('í', 'i')
+    slug = (nome.lower()
+            .replace(' ', '-')
+            .replace('ã', 'a').replace('á', 'a').replace('â', 'a')
+            .replace('ê', 'e').replace('é', 'e')
+            .replace('í', 'i')
+            .replace('õ', 'o').replace('ó', 'o').replace('ô', 'o')
+            .replace('ú', 'u').replace('ü', 'u')
+            .replace('ç', 'c'))
     res = supabase.table('times').upsert(
         {'sofascore_id': sofascore_id, 'nome': nome, 'slug': slug},
         on_conflict='sofascore_id'
@@ -183,17 +189,26 @@ def processar_eventos(supabase, page, eventos, ids_times, label):
             supabase, evento, ids_times[sof_casa], ids_times[sof_fora], status_str)
 
         if status_str == 'finalizado':
-            stats = page.evaluate(f'''async () => {{
-                const resp = await fetch('{BASE_API}/event/{event_id}/statistics');
-                if (!resp.ok) return null;
-                return await resp.json();
-            }}''')
-            tem_stats = stats and stats.get('statistics')
-            upsert_estatisticas(
-                supabase, partida_id, ids_times[sof_casa], 'casa', stats if tem_stats else None)
-            upsert_estatisticas(
-                supabase, partida_id, ids_times[sof_fora], 'fora', stats if tem_stats else None)
-            stats_label = '✅' if tem_stats else '⚠️  sem stats'
+            try:
+                stats = page.evaluate(f'''async () => {{
+                    const resp = await fetch('{BASE_API}/event/{event_id}/statistics');
+                    if (!resp.ok) return null;
+                    return await resp.json();
+                }}''')
+                tem_stats = stats and stats.get('statistics')
+            except Exception as e_stats:
+                print(f'    ⚠️  Erro ao buscar stats do evento {event_id}: {e_stats}')
+                tem_stats = False
+
+            if tem_stats:
+                upsert_estatisticas(
+                    supabase, partida_id, ids_times[sof_casa], 'casa', stats)
+                upsert_estatisticas(
+                    supabase, partida_id, ids_times[sof_fora], 'fora', stats)
+                stats_label = '✅'
+            else:
+                stats_label = '⚠️  sem stats'
+
             gc, gf, terminou, _, _ = resolver_placar(evento)
             print(
                 f'    [{terminou}] {nome_casa} {gc}x{gf} {nome_fora} {stats_label}')
@@ -246,43 +261,47 @@ def main():
             print(f'{"─" * 65}')
             print(f'  ⚽ {nome.upper()}')
 
-            print('  📁 Último jogo:')
-            resp_last = page.evaluate(f'''async () => {{
-                const resp = await fetch('{BASE_API}/team/{team_id}/events/last/0');
-                if (!resp.ok) return {{ error: resp.status }};
-                return await resp.json();
-            }}''')
+            try:
+                print('  📁 Último jogo:')
+                resp_last = page.evaluate(f'''async () => {{
+                    const resp = await fetch('{BASE_API}/team/{team_id}/events/last/0');
+                    if (!resp.ok) return {{ error: resp.status }};
+                    return await resp.json();
+                }}''')
 
-            if 'error' not in resp_last:
-                eventos_last = resp_last.get('events', [])
-                ultimos = [e for e in eventos_last if classificar_status(
-                    e.get('status', {}).get('code', -1)) == 'finalizado']
-                s, i = processar_eventos(
-                    supabase, page, ultimos[-1:], ids_times, 'ultimo')
-                total_salvos += s
-                total_ignorados += i
-            else:
-                print(f'    ❌ Erro HTTP {resp_last["error"]}')
+                if 'error' not in resp_last:
+                    eventos_last = resp_last.get('events', [])
+                    ultimos = [e for e in eventos_last if classificar_status(
+                        e.get('status', {}).get('code', -1)) == 'finalizado']
+                    s, i = processar_eventos(
+                        supabase, page, ultimos[-1:], ids_times, 'ultimo')
+                    total_salvos += s
+                    total_ignorados += i
+                else:
+                    print(f'    ❌ Erro HTTP {resp_last["error"]}')
 
-            time.sleep(1)
+                time.sleep(1)
 
-            print('  📅 Próximo jogo:')
-            resp_next = page.evaluate(f'''async () => {{
-                const resp = await fetch('{BASE_API}/team/{team_id}/events/next/0');
-                if (!resp.ok) return {{ error: resp.status }};
-                return await resp.json();
-            }}''')
+                print('  📅 Próximo jogo:')
+                resp_next = page.evaluate(f'''async () => {{
+                    const resp = await fetch('{BASE_API}/team/{team_id}/events/next/0');
+                    if (!resp.ok) return {{ error: resp.status }};
+                    return await resp.json();
+                }}''')
 
-            if 'error' not in resp_next:
-                eventos_next = resp_next.get('events', [])
-                proximos = [e for e in eventos_next if classificar_status(
-                    e.get('status', {}).get('code', -1)) == 'agendado']
-                s, i = processar_eventos(
-                    supabase, page, proximos[:1], ids_times, 'proximo')
-                total_salvos += s
-                total_ignorados += i
-            else:
-                print(f'    ❌ Erro HTTP {resp_next["error"]}')
+                if 'error' not in resp_next:
+                    eventos_next = resp_next.get('events', [])
+                    proximos = [e for e in eventos_next if classificar_status(
+                        e.get('status', {}).get('code', -1)) == 'agendado']
+                    s, i = processar_eventos(
+                        supabase, page, proximos[:1], ids_times, 'proximo')
+                    total_salvos += s
+                    total_ignorados += i
+                else:
+                    print(f'    ❌ Erro HTTP {resp_next["error"]}')
+
+            except Exception as e:
+                print(f'  ❌ Erro inesperado ao processar {nome}: {e}')
 
             time.sleep(1.5)
 

@@ -37,20 +37,12 @@ TIMES = {
     'Vasco da Gama':       1974,
 }
 
-# Status que indicam jogo NÃO realizado — ignorar
-STATUS_IGNORAR = {
-    0,    # Não iniciado (futuro)
-    60,   # Adiado
-    70,   # Cancelado
-    80,   # Abandonado
-    90,   # W.O.
-    93,   # Interrompido
-}
+STATUS_FINALIZADO = {100, 110, 120}
 
 
 def jogo_valido(evento):
     code = evento.get('status', {}).get('code', -1)
-    if code in STATUS_IGNORAR:
+    if code not in STATUS_FINALIZADO:
         return False
     if evento.get('homeScore', {}).get('current') is None:
         return False
@@ -119,8 +111,14 @@ def extrair_stat(stats_json, stat_name):
 
 
 def upsert_time(supabase, nome, sofascore_id):
-    slug = nome.lower().replace(' ', '-').replace('ã',
-                                                  'a').replace('á', 'a').replace('ê', 'e')
+    slug = (nome.lower()
+            .replace(' ', '-')
+            .replace('ã', 'a').replace('á', 'a').replace('â', 'a')
+            .replace('ê', 'e').replace('é', 'e')
+            .replace('í', 'i')
+            .replace('õ', 'o').replace('ó', 'o').replace('ô', 'o')
+            .replace('ú', 'u').replace('ü', 'u')
+            .replace('ç', 'c'))
     res = supabase.table('times').upsert(
         {'sofascore_id': sofascore_id, 'nome': nome, 'slug': slug},
         on_conflict='sofascore_id'
@@ -139,6 +137,7 @@ def upsert_partida(supabase, evento, time_casa_id, time_fora_id):
         'time_casa_id':  time_casa_id,
         'time_fora_id':  time_fora_id,
         'data':          data_iso,
+        'status':        'finalizado',
         'gols_casa':     gc,
         'gols_fora':     gf,
         'terminou_em':   terminou,
@@ -211,65 +210,76 @@ def main():
             print(f'{"─" * 65}')
             print(f'  ⚽ {nome.upper()}')
 
-            response = page.evaluate(f'''async () => {{
-                const resp = await fetch('{BASE_API}/team/{team_id}/events/last/0');
-                if (!resp.ok) return {{ error: resp.status }};
-                return await resp.json();
-            }}''')
-
-            if 'error' in response:
-                print(f'  ❌ Erro HTTP {response["error"]}')
-                continue
-
-            todos_eventos = response.get('events', [])
-            eventos_validos = [e for e in todos_eventos if jogo_valido(e)]
-            eventos = list(reversed(eventos_validos[-10:]))
-
-            print(
-                f'  Total retornado: {len(todos_eventos)} | Válidos: {len(eventos_validos)} | Salvando: {len(eventos)}')
-
-            ignorados_motivo = len(todos_eventos) - len(eventos_validos)
-            if ignorados_motivo > 0:
-                print(
-                    f'  ⏭️  {ignorados_motivo} jogo(s) ignorado(s) (adiados/cancelados/sem placar)')
-
-            for evento in eventos:
-                event_id = evento['id']
-                sof_casa = evento['homeTeam']['id']
-                sof_fora = evento['awayTeam']['id']
-                nome_casa = evento['homeTeam']['name']
-                nome_fora = evento['awayTeam']['name']
-                competicao = evento.get('tournament', {}).get('name', '?')
-                gc, gf, terminou, _, _ = resolver_placar(evento)
-
-                if sof_casa not in ids_times:
-                    ids_times[sof_casa] = upsert_time(
-                        supabase, nome_casa, sof_casa)
-                if sof_fora not in ids_times:
-                    ids_times[sof_fora] = upsert_time(
-                        supabase, nome_fora, sof_fora)
-
-                partida_id = upsert_partida(
-                    supabase, evento, ids_times[sof_casa], ids_times[sof_fora])
-
-                stats = page.evaluate(f'''async () => {{
-                    const resp = await fetch('{BASE_API}/event/{event_id}/statistics');
-                    if (!resp.ok) return null;
+            try:
+                response = page.evaluate(f'''async () => {{
+                    const resp = await fetch('{BASE_API}/team/{team_id}/events/last/0');
+                    if (!resp.ok) return {{ error: resp.status }};
                     return await resp.json();
                 }}''')
 
-                tem_stats = stats and stats.get('statistics')
-                upsert_estatisticas(
-                    supabase, partida_id, ids_times[sof_casa], 'casa', stats if tem_stats else None)
-                upsert_estatisticas(
-                    supabase, partida_id, ids_times[sof_fora], 'fora', stats if tem_stats else None)
+                if 'error' in response:
+                    print(f'  ❌ Erro HTTP {response["error"]}')
+                    continue
 
-                stats_label = '✅' if tem_stats else '⚠️  sem stats'
+                todos_eventos = response.get('events', [])
+                eventos_validos = [e for e in todos_eventos if jogo_valido(e)]
+                eventos = list(reversed(eventos_validos[-10:]))
+
                 print(
-                    f'  [{terminou}] {nome_casa} {gc}x{gf} {nome_fora} — {competicao} {stats_label}')
+                    f'  Total retornado: {len(todos_eventos)} | Válidos: {len(eventos_validos)} | Salvando: {len(eventos)}')
 
-                total_salvo += 1
-                time.sleep(0.8)
+                ignorados_motivo = len(todos_eventos) - len(eventos_validos)
+                if ignorados_motivo > 0:
+                    print(
+                        f'  ⏭️  {ignorados_motivo} jogo(s) ignorado(s) (não finalizados/sem placar)')
+
+                for evento in eventos:
+                    event_id = evento['id']
+                    sof_casa = evento['homeTeam']['id']
+                    sof_fora = evento['awayTeam']['id']
+                    nome_casa = evento['homeTeam']['name']
+                    nome_fora = evento['awayTeam']['name']
+                    competicao = evento.get('tournament', {}).get('name', '?')
+                    gc, gf, terminou, _, _ = resolver_placar(evento)
+
+                    if sof_casa not in ids_times:
+                        ids_times[sof_casa] = upsert_time(
+                            supabase, nome_casa, sof_casa)
+                    if sof_fora not in ids_times:
+                        ids_times[sof_fora] = upsert_time(
+                            supabase, nome_fora, sof_fora)
+
+                    partida_id = upsert_partida(
+                        supabase, evento, ids_times[sof_casa], ids_times[sof_fora])
+
+                    try:
+                        stats = page.evaluate(f'''async () => {{
+                            const resp = await fetch('{BASE_API}/event/{event_id}/statistics');
+                            if (!resp.ok) return null;
+                            return await resp.json();
+                        }}''')
+                        tem_stats = stats and stats.get('statistics')
+                    except Exception as e_stats:
+                        print(f'  ⚠️  Erro ao buscar stats do evento {event_id}: {e_stats}')
+                        tem_stats = False
+
+                    if tem_stats:
+                        upsert_estatisticas(
+                            supabase, partida_id, ids_times[sof_casa], 'casa', stats)
+                        upsert_estatisticas(
+                            supabase, partida_id, ids_times[sof_fora], 'fora', stats)
+                        stats_label = '✅'
+                    else:
+                        stats_label = '⚠️  sem stats'
+
+                    print(
+                        f'  [{terminou}] {nome_casa} {gc}x{gf} {nome_fora} — {competicao} {stats_label}')
+
+                    total_salvo += 1
+                    time.sleep(0.8)
+
+            except Exception as e:
+                print(f'  ❌ Erro inesperado ao processar {nome}: {e}')
 
             time.sleep(1.5)
 

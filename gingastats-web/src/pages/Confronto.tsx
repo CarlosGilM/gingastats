@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getConfrontoCompleto } from '../api/api';
 import MediasTime from '../components/MediasTime';
 import AnaliseIaSection from '../components/AnaliseIaSection';
 import EscudoTime from '../components/EscudoTime';
 import logoFull from '../assets/logo-full.png';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { fetchConfrontoCompleto } from '../store/confronto/confrontoThunks';
 
 const injectFonts = () => {
   if (document.getElementById('ginga-fonts')) return;
@@ -58,17 +59,16 @@ function PitchBackground() {
 export default function Confronto() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [dados, setDados] = useState<any>(null);
-  const [loadingDados, setLoadingDados] = useState(true);
+  const dispatch     = useAppDispatch();
+  const dados        = useAppSelector((s) => s.confronto.dados);
+  const statusDados  = useAppSelector((s) => s.confronto.statusDados);
+  const loadingDados = statusDados === 'loading' || statusDados === 'idle';
 
   useEffect(() => {
     injectFonts();
     if (!id) return;
-    setLoadingDados(true);
-    getConfrontoCompleto(Number(id))
-      .then(setDados)
-      .finally(() => setLoadingDados(false));
-  }, [id]);
+    dispatch(fetchConfrontoCompleto({ id: Number(id) }));
+  }, [dispatch, id]);
 
   if (loadingDados) {
     return (

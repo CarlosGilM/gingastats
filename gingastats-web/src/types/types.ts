@@ -98,11 +98,13 @@ export interface ConfrontoCompleto {
   time_casa: {
     medias_gerais: Medias;
     medias_em_casa: Medias;
+    gols_sofridos_em_casa: number;
     ultimo_jogo: UltimoJogo;
   };
   time_fora: {
     medias_gerais: Medias;
     medias_fora_casa: Medias;
+    gols_sofridos_fora: number;
     ultimo_jogo: UltimoJogo;
   };
   insight: Insight;

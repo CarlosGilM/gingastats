@@ -1,12 +1,6 @@
-import { useState } from 'react';
-import type { AnaliseIa, MercadoIa } from '../types/types';
-import { getAnaliseIa } from '../api/api';
-
-const COR_CONFIANCA: Record<string, string> = {
-  Alta: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-  Média: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  Baixa: 'bg-red-500/20 text-red-400 border-red-500/30',
-};
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { fetchAnaliseIa } from '../store/confronto/confrontoThunks';
+import MercadoCard from './MercadoCard';
 
 interface Props {
   partidaId: number;
@@ -14,25 +8,20 @@ interface Props {
 }
 
 export default function AnaliseIaSection({ partidaId, jogos = 10 }: Props) {
-  const [analise, setAnalise] = useState<AnaliseIa | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [solicitado, setSolicitado] = useState(false);
+  const dispatch      = useAppDispatch();
+  const analise       = useAppSelector((s) => s.confronto.analiseIa);
+  const statusAnalise = useAppSelector((s) => s.confronto.statusAnalise);
+  const loading       = statusAnalise === 'loading';
+  const solicitado    = statusAnalise !== 'idle';
 
-  const solicitar = async () => {
-    setSolicitado(true);
-    setLoading(true);
-    try {
-      const r = await getAnaliseIa(partidaId, jogos);
-      setAnalise(r.analise_ia);
-    } finally {
-      setLoading(false);
-    }
+  const solicitar = () => {
+    dispatch(fetchAnaliseIa({ id: partidaId, jogos }));
   };
 
   if (!solicitado) {
     return (
       <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center">
-        <div className="w-12 h-12 bg-gradient-to-br from-[#00e676]/20 to-[#00bcd4]/20 border border-[#00e676]/30 rounded-xl flex items-center justify-center mx-auto mb-4">
+        <div className="w-12 h-12 bg-linear-to-br from-[#00e676]/20 to-[#00bcd4]/20 border border-[#00e676]/30 rounded-xl flex items-center justify-center mx-auto mb-4">
           <span className="text-[#00e676] text-xl">✦</span>
         </div>
         <h3 className="font-bold text-lg mb-2">Análise Inteligente</h3>
@@ -103,24 +92,8 @@ export default function AnaliseIaSection({ partidaId, jogos = 10 }: Props) {
 
           {/* Mercados */}
           <div className="space-y-3">
-            {analise.mercados.map((m: MercadoIa) => (
-              <div key={m.mercado} className="border border-white/10 rounded-xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base font-bold">{m.mercado}</span>
-                    {m.linha !== null && (
-                      <span className="text-sm bg-white/10 px-2 py-0.5 rounded font-mono">{m.linha}</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-base font-black text-[#00e676]">{m.sugestao}</span>
-                    <span className={`text-sm px-2 py-0.5 rounded border font-semibold ${COR_CONFIANCA[m.confianca]}`}>
-                      {m.confianca}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-sm text-white/50 leading-relaxed">{m.justificativa}</p>
-              </div>
+            {analise.mercados.map((m) => (
+              <MercadoCard key={m.mercado} mercado={m} />
             ))}
           </div>
 

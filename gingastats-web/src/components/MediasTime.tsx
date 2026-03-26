@@ -125,7 +125,7 @@ export default function MediasTime({ nome, local, medias, mediasPorLocal, golsSo
               <span className={`text-sm font-bold text-right ${ultimoJogo.local === 'casa' ? 'text-[#00e676]' : 'text-white'}`}>
                 {nomeCasaUJ}
               </span>
-              <span className="text-3xl font-black tabular-nums flex-shrink-0">
+              <span className="text-3xl font-black tabular-nums shrink-0">
                 {placarCasa} <span className="text-white/30">×</span> {placarFora}
               </span>
               <span className={`text-sm font-bold ${ultimoJogo.local === 'fora' ? 'text-[#00e676]' : 'text-white'}`}>

@@ -20,16 +20,16 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: gingastats-scrapper/requirements.txt
+          cache-dependency-path: gingastats-scraper/requirements.txt
 
       - name: Instalar dependências
-        run: pip install -r gingastats-scrapper/requirements.txt
+        run: pip install -r gingastats-scraper/requirements.txt
 
       - name: Instalar Chromium (Playwright)
         run: playwright install chromium --with-deps
 
       - name: Rodar coleta semanal
-        run: python gingastats-scrapper/coleta-semanal.py
+        run: python gingastats-scraper/coleta-semanal.py
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
